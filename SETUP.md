@@ -39,8 +39,8 @@
 ## 📥 2. Get the project
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/vikrant111/DOform.git
+cd DOform
 ```
 
 That's it — no database to install, no server to start. 🎉
