@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; form-action 'none'; base-uri 'none'" />
+  <title>CVP Requisition</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root" class="booting">
+    <div class="boot">
+      <div class="boot-mark">CVP</div>
+      <p>Connecting to the local database…</p>
+    </div>
+  </div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

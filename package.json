@@ -1,0 +1,137 @@
+{
+  "name": "doform",
+  "productName": "CVP Requisition",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline desktop app for the Requisition for Issue of Casual Visitor Pass (CVP).",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "init-db": "node electron/init-db.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "seed-demo": "node scripts/seed-demo.mjs",
+    "reset-password": "node scripts/reset-password.mjs",
+    "migrate-db": "node scripts/migrate-db.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "mysql2": "^3.15.3"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.22"
+  },
+  "build": {
+    "appId": "in.navy.utkrosh.doform",
+    "productName": "CVP Requisition",
+    "files": [
+      "electron/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "artifactName": "CVP-Requisition-${version}-mac-${arch}.${ext}",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "maintainer": "INS Utkrosh Security Section <admin@localhost>",
+      "artifactName": "CVP-Requisition-${version}-linux-${arch}.${ext}",
+      "icon": "build/icon.png",
+      "desktop": {
+        "entry": {
+          "Name": "CVP Requisition",
+          "Comment": "Offline visitor pass requisitions",
+          "Categories": "Office;Utility;"
+        }
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CVP Requisition",
+      "artifactName": "CVP-Requisition-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "CVP-Requisition-Portable-${version}-${arch}.${ext}"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://localhost/doform",
+  "author": {
+    "name": "INS Utkrosh Security Section",
+    "email": "admin@localhost"
+  },
+  "license": "UNLICENSED"
+}
