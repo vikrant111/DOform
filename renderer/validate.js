@@ -29,7 +29,7 @@ export function blankRequisition(userId) {
     purpose: '', place_of_visit: '', file_no: '', requisition_date: today(),
     requested_by_rank_name: '', security_remarks: '', security_signature: '',
     pass_no: '', pass_issued_at: '', pass_issued_on: '', pass_signed_by: '',
-    status: 'draft', created_by: userId,
+    photo: '', status: 'draft', created_by: userId,
     visitors: [blankVisitor()], vehicles: [], escorts: [],
   };
 }

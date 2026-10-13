@@ -164,6 +164,56 @@ for (const engine of ENGINES) {
       await db.removeRequisitions([id]);
     });
 
+    test('the pass photograph round-trips, and an absent one stays empty', async () => {
+      /* Big enough to pass a MySQL TEXT column, which tops out at 64 KB — the
+         reason that column is MEDIUMTEXT. A real photo is around 30 KB. */
+      const big = 'data:image/jpeg;base64,' + 'A'.repeat(80 * 1024);
+      const rec = {...sample('u1'), photo: big};
+
+      const id = await db.saveFull(rec);
+      const back = await db.getFull(id);
+      assert.equal(back.photo, big, 'stored whole, not truncated');
+      /* One per requisition — a visitor does not carry one. (A database
+         upgraded from the version that put it there still has the old column;
+         what matters is that nothing is written to it.) */
+      assert.ok(!back.visitors[0].photo, 'a visitor carries no photograph');
+
+      /* Saving again must not lose it, nor resurrect it once removed. */
+      rec.id = id;
+      await db.saveFull(rec);
+      assert.equal((await db.getFull(id)).photo, big, 'a second save keeps it');
+      await db.saveFull({...rec, photo: ''});
+      assert.equal((await db.getFull(id)).photo ?? '', '', 'removing it sticks');
+
+      await db.removeRequisitions([id]);
+    });
+
+    test('the pass block is written on its own, without touching the children', async () => {
+      const id = await db.saveFull(sample('u1'));
+      const before = await db.getFull(id);
+
+      const pass = {pass_no: 'CVP/UTK/12345A/13102026/210817', pass_issued_at: '2108', pass_issued_on: '2026-10-13'};
+      assert.equal(await db.setPass(id, pass), 1);
+
+      const after = await db.getFull(id);
+      assert.equal(after.pass_no, pass.pass_no);
+      assert.equal(after.pass_issued_at, pass.pass_issued_at);
+      assert.equal(String(after.pass_issued_on).slice(0, 10), pass.pass_issued_on);
+
+      /*
+       * The reason this is not `saveFull`: that one deletes and rewrites every
+       * visitor, vehicle and escort row. Recording a pass number must not be
+       * able to lose a visitor.
+       */
+      assert.equal(after.visitors.length, before.visitors.length, 'visitors survived');
+      assert.equal(after.vehicles.length, before.vehicles.length, 'vehicles survived');
+      assert.equal(after.escorts.length, before.escorts.length, 'escorts survived');
+      assert.equal(after.purpose, before.purpose, 'the rest of the record is untouched');
+
+      assert.equal(await db.setPass('', pass), 0, 'no id writes nothing');
+      await db.removeRequisitions([id]);
+    });
+
     test('delete cascades to visitors, vehicles and escorts', async () => {
       const id = await db.saveFull(sample('u1'));
       assert.equal(await db.removeRequisitions([id]), 1);

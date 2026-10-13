@@ -6,7 +6,7 @@ import {BrowserWindow, Menu, app, dialog, ipcMain, shell} from 'electron';
 import {CFG, publicConfig} from './config.js';
 import * as auth from './auth.js';
 import * as db from './db.js';
-import {toCsv, toHtml} from './export.js';
+import {isIssuedPass, issuePass, passOnPrint, toCsv, toHtml} from './export.js';
 import * as G from './guards.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +67,21 @@ function createWindow() {
   // Nothing in this app should ever navigate away or open a browser window.
   win.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
   win.webContents.on('will-navigate', e => e.preventDefault());
+
+  /*
+   * The camera, and nothing else.
+   *
+   * Electron approves every permission a page asks for when no handler is set,
+   * which was harmless while the app asked for none — and stops being harmless
+   * the moment it asks for one. This grants `media` so a visitor photograph can
+   * be taken, and refuses the rest: a requisition form has no business with the
+   * location, notifications, the clipboard or a MIDI device.
+   */
+  const ALLOWED = new Set(['media']);
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, done) =>
+    done(ALLOWED.has(permission)));
+  win.webContents.session.setPermissionCheckHandler((_wc, permission) =>
+    ALLOWED.has(permission));
 
   win.loadFile(join(here, '..', 'renderer', 'index.html'));
   win.on('closed', () => {
@@ -276,12 +291,20 @@ handle('req:save', async payload => {
     isAdmin: user.role === 'admin',
   });
   const existing = clean.id ? await db.getFull(clean.id) : null;
+  const service = existing?.created_by_service || user.serviceNo || '';
   return db.saveFull({
     ...clean,
+    // Generated once, with its issue time, and never taken from the page, so it
+    // cannot be forged or lost when someone without the Security Office block
+    // edits the record. Old hand-typed numbers are replaced on the next save.
+    ...(isIssuedPass(existing)
+      ? {pass_no: existing.pass_no, pass_issued_at: existing.pass_issued_at,
+         pass_issued_on: existing.pass_issued_on}
+      : issuePass(service)),
     // Authorship is stamped once, by the person who first wrote it. The
     // service number is what survives an account being deleted and remade.
     created_by: existing?.created_by || user.id,
-    created_by_service: existing?.created_by_service || user.serviceNo || '',
+    created_by_service: service,
     created_by_name: existing?.created_by_name || user.fullName || user.username,
   });
 });
@@ -303,10 +326,38 @@ handle('stats:get', async f => {
 
 /** Shared by print, PDF and CSV: resolve a selection into real records. */
 async function selected(ids, what) {
-  requireUser();
+  const user = requireUser();
   const recs = await db.getManyFull(G.idList(ids));
   if (!recs.length) throw new G.BadInput(`Nothing selected to ${what}.`);
-  return recs;
+  return issueMissingPasses(recs, user);
+}
+
+/**
+ * Give a pass number to anything printed without one.
+ *
+ * A record written before the app issued pass numbers carries a hand-typed one
+ * and no issue time, so its pass line prints "at ____ Hrs on (Date) ____" blank
+ * — a number with no moment attached. `req:save` already replaces those, but a
+ * record nobody edits again never reaches that path, and printing is exactly
+ * when the pass is handed over.
+ *
+ * Written back, so a reprint shows the same number rather than a new one each
+ * time. Here rather than in each handler because print, PDF and CSV all come
+ * through this one function; a guard per caller is three places to forget.
+ *
+ * Only the Security Office. The number is generated here and never read off the
+ * page, so it cannot be forged either way — but writing the pass block is
+ * theirs, and `guards.js` says so for the save path.
+ */
+async function issueMissingPasses(recs, user) {
+  if (!CFG.passOnPrint || user.role !== 'admin') return recs;
+
+  return Promise.all(recs.map(async r => {
+    const pass = passOnPrint(r);
+    if (!pass) return r;
+    await db.setPass(r.id, pass);
+    return {...r, ...pass};
+  }));
 }
 
 handle('export:csv', async ids =>

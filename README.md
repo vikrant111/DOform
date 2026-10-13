@@ -665,9 +665,71 @@ automatically — the app says how many as it happens. A forgotten password, a
 deleted account, or a posting out and back therefore never costs anyone their
 history. Two live accounts may not share a service number.
 
+**Pass number.** Generated automatically the first time a requisition is saved, as
+`CVP/UTK/<service no of the writer>/<DDMMYYYY>/<HHMMSS>` (e.g.
+`CVP/UTK/12345A/13102026/204530`). It never changes afterwards and cannot be
+edited from the page. The `CVP/UTK` part is `PASS_NO_PREFIX` in `.env`. The same
+moment fills the pass line's *at … Hrs on (Date)*, so the number and the time on
+the paper always agree.
+
+Records written before the app generated numbers carry a hand-typed one —
+`CVP-2026-0142` — and no issue time, so their pass line printed a number with
+both blanks empty. Saving one replaces it, but a record nobody edits again never
+reaches that path, so **printing one now issues it a proper pass and writes it
+back**. Security Office only, written once, and a reprint shows the same number:
+one that changed per print would be worse than a blank, because two papers for
+one visitor would carry two numbers at the gate. Set `PASS_ON_PRINT=off` in
+`.env` to leave old records alone.
+
 **The form.** Every section of the paper CVP, with inline add/remove for
 visitors, vehicles and escorts, capped at the configured maximums. The *For use
 of Security Office* block is administrators only.
+
+**Photograph.** One per requisition, at the top of the form — **Take photo**
+uses the machine's camera, **Choose file** takes one already on it. Either way
+the page shrinks it to about 400px and re-encodes it as a JPEG before it is
+sent, so a camera frame of several megabytes is stored as roughly 30 KB; a
+picture that still will not fit is shrunk further rather than refused after it
+was taken.
+
+**One photograph per pass**, whichever visitor it is of — not one per visitor.
+It belongs to the requisition, because that is what a pass is for, and it prints
+at the **top left** of the sheet where one is pasted on the paper form,
+captioned with the first visitor's name. A column of pictures beside five
+visitors would be four empty boxes and a narrower table.
+
+A database written by the first version of this, which put the picture on the
+visitor, has it moved onto the requisition when it is next opened — nothing
+anybody photographed is lost.
+
+**Which camera.** Whatever is attached — the lid camera on a laptop, a USB one
+on a stand, or both. When there is more than one the dialog shows a picker, the
+choice is remembered for next time, and a camera plugged in or unplugged while
+the dialog is open appears or disappears from the list. A remembered camera that
+has since been unplugged falls back to one that is there rather than failing.
+
+Only PNG, JPEG and WebP are accepted. SVG is refused deliberately: it is a
+document that can carry script, and the value ends up inside an `img src` on a
+page the app renders. The camera is the only permission this app grants itself;
+everything else a page could ask for is refused.
+
+**Windows and macOS both block the camera at the system level**, and nothing in
+the app can see that switch — so a refusal names the panel to open rather than
+saying "check your settings". On Windows that is *Settings → Privacy & security
+→ Camera → Let desktop apps access your camera*; on macOS, *System Settings →
+Privacy & Security → Camera*.
+
+To check a machine before anybody relies on it:
+
+```bash
+npm run check:camera             # the camera attached to this machine
+npm run check:camera -- --fake   # no hardware needed: the plumbing only
+```
+
+It loads the real page, with the real preload, CSP and sandbox, so a refusal
+there is a refusal the operator would have had. `npm test` deliberately does not
+do this: that suite is plain Node and runs anywhere, while a camera needs a
+window, a display and the operating system's permission.
 
 **Validation happens as you fill the form**, not only when you press Save. A
 field is checked when you leave it and the message clears the moment the value

@@ -1,4 +1,5 @@
 import {call, field, h, setChildren, toast} from '../ui.js';
+import {photoField} from '../photo.js';
 import {STATUSES, blankEscort, blankRequisition, blankVehicle, blankVisitor, rules,
         timeOrderError, validate} from '../validate.js';
 
@@ -144,6 +145,23 @@ export function renderForm(state, {initial, onDone, onCancel}) {
           h('p', {class: 'sub'}, config.formTitle + ' · ' + config.unitName)),
       ),
 
+      /*
+       * The photograph, once, at the top of the form.
+       *
+       * A pass carries one picture whichever visitor it is of, so this belongs
+       * to the requisition rather than to a visitor row — a control under every
+       * visitor read as a requirement to photograph all of them.
+       *
+       * It redraws itself rather than going through `draw()`: rebuilding the
+       * form would move focus out of whichever field the user was in when they
+       * took the picture.
+       */
+      h('div', {class: 'card photo-card'},
+        photoField(f, {
+          label: 'Photograph for the pass',
+          hint: 'One photograph, of any one visitor. It is printed on the pass.',
+        })),
+
       // 1 — visit details
       h('div', {class: 'card'},
         h('h2', {}, '1 · Visit details'),
@@ -267,9 +285,13 @@ export function renderForm(state, {initial, onDone, onCancel}) {
         h('div', {class: 'btn-row'}, adder('+ Add escort', 'escorts', blankEscort, config.maxEscorts)),
       ),
 
-      // 5 — requisition block
+      // requisition block
       h('div', {class: 'card'},
-        h('h2', {}, '5 · Requisition'),
+        h('h2', {}, 'Requisition'),
+        h('p', {class: 'hint', style: {marginBottom: '12px'}},
+          'Pass no. ', h('b', {}, f.pass_no || 'generated automatically when saved'),
+          f.pass_no && f.pass_issued_on
+            ? ` · issued at ${f.pass_issued_at} Hrs on ${f.pass_issued_on}` : ''),
         h('div', {class: 'grid g3'},
           F('File no.', f.file_no, v => (f.file_no = v),
             {placeholder: 'UTK/SEC/CVP/2026/…', validate: rules.maxLen('File no.', 64)}),
@@ -289,22 +311,7 @@ export function renderForm(state, {initial, onDone, onCancel}) {
       user.role === 'admin'
         ? h('div', {class: 'card'},
             h('h2', {}, 'For use of Security Office'),
-            h('div', {class: 'grid g2'},
-              F('Remarks of Security Officer / OOD', f.security_remarks,
-                v => (f.security_remarks = v),
-                {multiline: true, validate: rules.maxLen('Remarks', 4000)}),
-              F('Signature (Security Officer)', f.security_signature,
-                v => (f.security_signature = v), {validate: rules.maxLen('Signature', 255)}),
-            ),
-            h('div', {class: 'grid g3', style: {marginTop: '12px'}},
-              F('Pass no.', f.pass_no, v => (f.pass_no = v),
-                {validate: rules.maxLen('Pass no.', 64)}),
-              F('Issued at (Hrs)', f.pass_issued_at, v => (f.pass_issued_at = v),
-                {placeholder: '0920', inputMode: 'numeric', validate: rules.time('Issued at')}),
-              F('Issued on', f.pass_issued_on, v => (f.pass_issued_on = v),
-                {type: 'date', validate: rules.date('Issued on')}),
-            ),
-            h('div', {class: 'grid', style: {marginTop: '12px'}},
+            h('div', {class: 'grid'},
               F('Sign (MAA SEC / DCOP / Duty Chief)', f.pass_signed_by,
                 v => (f.pass_signed_by = v), {validate: rules.maxLen('Sign', 255)}),
             ),

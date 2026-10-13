@@ -7,6 +7,7 @@
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import * as db from '../electron/db.js';
+import {issuePass} from '../electron/export.js';
 
 // Matches Electron's app.getPath('userData') for this product name.
 const USER_DATA = {
@@ -41,8 +42,8 @@ for (let i = 0; i < 46; i++) {
     file_no: `UTK/SEC/CVP/2026/${100 + i}`, requisition_date: localIso(d),
     requested_by_rank_name: pick(['Lt Cdr A Singh', 'Cdr R Menon', 'Lt P Das']),
     security_remarks: '', security_signature: '',
-    pass_no: Math.random() > 0.4 ? `CVP-2026-${String(100 + i).padStart(4, '0')}` : '',
-    pass_issued_at: '', pass_issued_on: '', pass_signed_by: '',
+    ...issuePass(pick(['12345A', '67890B', '24680C']), new Date(d.getTime() + i * 1000)),
+    pass_signed_by: '',
     status: pick(STATUS), created_by: 'seed',
     visitors: Array.from({length: nVisitors}, () => ({
       name: pick(NAMES), sex: pick(['M', 'F']), age: String(22 + Math.floor(Math.random() * 35)),

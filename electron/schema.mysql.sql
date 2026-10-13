@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS requisitions (
   created_by             VARCHAR(64)  NOT NULL DEFAULT '',
   created_by_service     VARCHAR(64)  NOT NULL DEFAULT '',
   created_by_name        VARCHAR(255) NOT NULL DEFAULT '',
+  -- MEDIUMTEXT, not TEXT: a base64 photo runs past the 64 KB TEXT ceiling and
+  -- MySQL truncates it silently outside strict mode, storing a broken image.
+  photo                  MEDIUMTEXT,
   created_at             DATETIME     NOT NULL,
   updated_at             DATETIME     NOT NULL,
   KEY idx_visit_date (visit_date),

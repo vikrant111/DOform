@@ -366,6 +366,17 @@ export function renderRecords(state, {onEdit, onNew}) {
               .filter(Boolean).join(' ')],
           ])),
 
+        /*
+         * The photograph, shown here as well as on the paper so somebody
+         * checking a record can see whether one was taken without printing it.
+         * One per requisition, which is what the pass carries.
+         */
+        rec.photo
+          ? h('div', {class: 'detail-block'},
+              h('h4', {}, 'Photograph'),
+              h('img', {class: 'photo-thumb', src: rec.photo, alt: 'Visitor photograph'}))
+          : null,
+
         miniTable('Visitors', ['Ser', 'Name', 'Sex/Age', 'Nationality', 'ID proof', 'Address'],
           rec.visitors, v => [String(v.ser), v.name,
             [v.sex, v.age].filter(Boolean).join('/'), v.nationality,
@@ -381,8 +392,6 @@ export function renderRecords(state, {onEdit, onNew}) {
         h('div', {class: 'detail-block'},
           h('h4', {}, 'Security Office'),
           dl([
-            ['Remarks', rec.security_remarks],
-            ['Signature', rec.security_signature],
             ['Pass no.', rec.pass_no],
             ['Issued at', rec.pass_issued_at],
             ['Issued on', rec.pass_issued_on],

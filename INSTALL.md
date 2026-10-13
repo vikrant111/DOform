@@ -167,7 +167,24 @@ an **Open .env** button that opens the file for you.
 
 ---
 
-## 6. If something goes wrong
+## 6. Checking the camera on a machine
+
+Visitor photographs need the camera, and both Windows and macOS block it at the
+system level — outside anything the app controls. Before telling an office the
+feature works there, run this on that machine:
+
+```bash
+npm run check:camera             # the camera attached to this machine
+npm run check:camera -- --fake   # no camera needed: checks the rest
+```
+
+It opens the real page and says which part failed, naming the settings panel to
+open if the system refused. A green line means an operator can take a
+photograph on that machine.
+
+---
+
+## 7. If something goes wrong
 
 | What you see | What to do |
 |---|---|
@@ -177,10 +194,14 @@ an **Open .env** button that opens the file for you.
 | Someone forgot their password | An administrator resets it under **Accounts → Reset password**. If no administrator can sign in, use `npm run reset-password` on the machine holding the data. |
 | Someone rejoined and wants their old records back | Create their account with the **same service number**; their earlier requisitions reconnect automatically. |
 | Records are missing | Check Settings shows the database you expect — a machine using its own local file will not see another machine's records. |
+| **Take photo** says the camera was refused | Windows: **Settings → Privacy & security → Camera**, turn on *Let desktop apps access your camera*. macOS: **System Settings → Privacy & Security → Camera**. Then reopen the app. |
+| **Take photo** finds no camera | Attach one and reopen the dialog — it notices a camera plugged in while it is open. A USB camera on a hub sometimes needs the hub powered. **Choose file** works meanwhile. |
+| The wrong camera opens | With more than one attached the dialog shows a picker above the buttons; the one you choose is remembered. |
+| "The camera is in use by another program" | Close whatever is holding it — Teams and Zoom keep the camera open in the background on Windows. |
 
 ---
 
-## 7. Removing it
+## 8. Removing it
 
 * **Windows** — Settings → Apps → *CVP Requisition* → Uninstall.
 * **macOS** — drag the app from Applications to the Bin.

@@ -167,6 +167,49 @@ describe('requisition', () => {
     assert.equal(asAdmin.security_remarks, 'approved by me');
   });
 
+  test('a visitor photo must plainly be an image, and a small one', () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+    /* The photograph belongs to the requisition: a pass carries one picture,
+       whichever visitor it is of, not one per visitor. */
+    const photo = v => G.requisition({...base, photo: v}, opts).photo;
+
+    const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA';
+    assert.equal(photo(PNG), PNG, 'a PNG data URL is kept');
+    assert.equal(photo(JPEG), JPEG, 'and a JPEG one');
+    assert.equal(photo('data:image/webp;base64,UklGRg=='), 'data:image/webp;base64,UklGRg==');
+    assert.equal(photo(''), '', 'no photo is the normal case');
+    assert.equal(photo(undefined), '');
+    assert.equal(photo('  '), '', 'whitespace is no photo either');
+
+    /*
+     * This value is written into an `src` attribute on a page the app renders
+     * for printing, so anything that is not plainly an image is refused — and
+     * SVG is refused with them, because it is a document that can carry script.
+     */
+    throws(() => photo('javascript:alert(1)'), /PNG, JPEG or WebP/);
+    throws(() => photo('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='), /PNG, JPEG or WebP/);
+    throws(() => photo('data:text/html;base64,PHNjcmlwdD4='), /PNG, JPEG or WebP/);
+    throws(() => photo('https://example.test/a.png'), /PNG, JPEG or WebP/);
+    throws(() => photo('file:///etc/passwd'), /PNG, JPEG or WebP/);
+    throws(() => photo('data:image/png;base64,<script>'), /PNG, JPEG or WebP/);
+    throws(() => photo({}), /must be an image/);
+
+    /* Truncated base64 would store as an image that only fails when printed. */
+    throws(() => photo('data:image/png;base64,abc'), /did not arrive complete/);
+
+    /*
+     * The ceiling. Ten visitors each carrying a full camera frame is a row
+     * measured in megabytes; the page shrinks a picture before sending it, and
+     * this is what happens when something does not.
+     */
+    throws(() => photo('data:image/jpeg;base64,' + 'A'.repeat(G.LIMITS.photo)), /too large/);
+    /* And a visitor cannot carry one any more, however the page asks. */
+    assert.equal(G.requisition({...base, visitors: [{...base.visitors[0], photo: PNG}]}, opts).visitors[0].photo, undefined);
+    /* And one just inside it is kept, so the ceiling is a ceiling, not a ban. */
+    const big = 'data:image/jpeg;base64,' + 'A'.repeat(G.LIMITS.photo - 24);
+    assert.equal(photo(big), big);
+  });
+
   test('unknown fields are dropped rather than passed to the database', () => {
     const r = G.requisition({...base, id: "'; DROP TABLE users; --", evil: 1}, opts);
     assert.equal(r.evil, undefined);

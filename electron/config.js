@@ -37,6 +37,24 @@ export const CFG = {
   maxVehicles: num('MAX_VEHICLES', 5),
   maxEscorts: num('MAX_ESCORTS', 5),
 
+  // Pass numbers read <prefix>/<service no>/<DDMMYYYY>/<HHMMSS>.
+  passNoPrefix: str('PASS_NO_PREFIX', 'CVP/UTK'),
+
+  /**
+   * Issue a pass number to a record that has none when it is first printed.
+   *
+   * Records written before the app generated pass numbers carry a hand-typed
+   * one — `CVP-2026-0142` — and no issue time, so the pass line prints a number
+   * with "at ____ Hrs on (Date) ____" left blank. On the next save they are
+   * replaced, but a record nobody edits again never gets there.
+   *
+   * With this on, printing one issues a proper pass and writes it back, so the
+   * paper and the record agree. Only the Security Office can trigger it, the
+   * number is generated here rather than taken from the page, and it is written
+   * once — reprinting shows the same number.
+   */
+  passOnPrint: bool('PASS_ON_PRINT', true),
+
   // 'sqlite' (default) keeps everything in one local file — no server, no
   // install. 'mysql' points the same app at a shared server instead.
   dbEngine: /^mysql$/i.test(str('DB_ENGINE', 'sqlite')) ? 'mysql' : 'sqlite',

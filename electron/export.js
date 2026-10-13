@@ -14,7 +14,7 @@ const HEADERS = [
   'Vehicle Regn No', 'Vehicle Type', 'Driver Name', 'CDL No', 'Vehicle Purpose',
   'Escort Name', 'Escort Rank/Desig', 'Escort P.No', 'Escort I-Card No',
   'Escort Dept', 'Escort Mob No',
-  'Requested By', 'Requisition Date', 'Security Remarks',
+  'Requested By', 'Requisition Date',
   'Pass Issued At', 'Pass Issued On', 'Pass Signed By', 'Created At',
 ];
 
@@ -40,7 +40,7 @@ export function toCsv(reqs, delimiter = CFG.csvDelimiter) {
         c?.regn_no ?? '', c?.vehicle_type ?? '', c?.driver_name ?? '', c?.cdl_no ?? '', c?.purpose ?? '',
         e?.name ?? '', e?.rank_desig ?? '', e?.p_no ?? '', e?.i_card_no ?? '',
         e?.dept ?? '', e?.mob_no ?? '',
-        r.requested_by_rank_name, r.requisition_date, r.security_remarks,
+        r.requested_by_rank_name, r.requisition_date,
         r.pass_issued_at, r.pass_issued_on, r.pass_signed_by, r.created_at,
       ]));
     }
@@ -48,6 +48,42 @@ export function toCsv(reqs, delimiter = CFG.csvDelimiter) {
   // BOM so Excel reads UTF-8 (and the Devanagari motto) correctly.
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
+
+// ── pass number ──────────────────────────────────────────────
+/**
+ * CVP/UTK/<service no>/<DDMMYYYY>/<HHMMSS>, plus the same moment as the pass's
+ * "at … Hrs on (Date)". Local time, since the pass is read against the wall clock.
+ */
+export function issuePass(serviceNo, now = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  const [dd, mm, yyyy] = [p(now.getDate()), p(now.getMonth() + 1), now.getFullYear()];
+  const [hh, mi, ss] = [p(now.getHours()), p(now.getMinutes()), p(now.getSeconds())];
+  return {
+    // ponytail: seconds keep two passes by one person in the same minute apart
+    pass_no: [CFG.passNoPrefix, String(serviceNo ?? '').trim() || 'NA', `${dd}${mm}${yyyy}`, `${hh}${mi}${ss}`].join('/'),
+    pass_issued_at: `${hh}${mi}`,
+    pass_issued_on: `${yyyy}-${mm}-${dd}`,
+  };
+}
+
+/** A pass this app generated, as opposed to an old hand-typed one. */
+export const isIssuedPass = r =>
+  String(r?.pass_no ?? '').startsWith(CFG.passNoPrefix + '/') && !!r.pass_issued_on && !!r.pass_issued_at;
+
+/**
+ * The pass a record should be given when it is printed, or `null` when it
+ * already has one and must keep it.
+ *
+ * Split out from the printing itself so the decision can be tested without an
+ * Electron window or a database — the writing is one line in `main.js`, the
+ * judgement is here.
+ *
+ * `null` for an already-issued pass is what makes a reprint show the same
+ * number. A pass number that changed every time it was printed would be worse
+ * than a blank one: two papers, same visitor, different numbers at the gate.
+ */
+export const passOnPrint = (r, now = new Date()) =>
+  isIssuedPass(r) ? null : issuePass(r?.created_by_service, now);
 
 // ── printable HTML ───────────────────────────────────────────
 const esc = v =>
@@ -83,11 +119,24 @@ const CSS = `
            line-height: 1.25; vertical-align: top; }
   th { font-weight: 700; text-align: left; background: #f2f2f2; }
   td.ser { width: 26px; text-align: center; }
-  .sig { display: flex; justify-content: space-between; margin-top: 10px; gap: 36px; }
-  .sig > div { flex: 1; }
-  .sig p { margin: 0 0 7px; }
-  .fwd { margin-top: 10px; }
-  .fwd p { margin: 0; }
+  /*
+   * The visitor photograph, passport size (35 × 45 mm), top left where one is
+   * pasted on the paper form. It sits in a flex row with the heading, the
+   * department line and section 1, so those keep their own alignment and the
+   * "1." stays visible; the visitor table below runs the full width. The
+   * heading is padded on the right by the photo's width so it stays centred
+   * on the page. object-fit crops rather than stretching a face, and
+   * print-color-adjust stops a printer driver economising on ink and dropping it.
+   */
+  .intro { display: flex; gap: 12px; align-items: flex-start; }
+  .intro-body { flex: 1; min-width: 0; }
+  .intro.has-photo h1, .intro.has-photo h2 { padding-right: calc(35mm + 12px); }
+  .passphoto { flex: none; width: 35mm; margin: 0; text-align: center; }
+  .passphoto img { width: 35mm; height: 45mm; object-fit: cover; display: block;
+                   border: 1px solid #000;
+                   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .passphoto figcaption { font-size: 8pt; line-height: 1.2; margin-top: 2px;
+                          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .office { border-top: 1px solid #000; margin-top: 9px; padding-top: 6px; }
   .office h3 { text-align: center; font-size: 10pt; margin: 0 0 7px; }
   .office p { margin: 0; }
@@ -99,113 +148,110 @@ const CSS = `
   table.summary { margin-top: 10px; }
 `;
 
-const padTo = (items, min) => {
-  const out = [...(items ?? [])];
-  while (out.length < min) out.push(null);
-  return out;
+/** A row counts as data when any of its own fields has text in it. */
+const KEYS = new Set(['id', 'requisition_id', 'ser', 'signed']);
+const filled = items => (items ?? []).filter(row =>
+  Object.entries(row ?? {}).some(([k, v]) => !KEYS.has(k) && String(v ?? '').trim()));
+
+/**
+ * The one photograph a pass carries.
+ *
+ * **One, not one per visitor.** A pass is for a visit and takes a single
+ * picture, so it belongs to the requisition — a column of them beside five
+ * names would be four empty boxes and a narrower table.
+ *
+ * The `src` is re-checked here rather than trusted from the record, because
+ * this string goes into an attribute on a page the app renders. A record
+ * written by an older version, or edited in the database by hand, must not be
+ * able to put anything else there.
+ */
+const hasPhoto = r => PRINTABLE_PHOTO.test(String(r?.photo ?? '').trim());
+
+const passPhoto = r => {
+  const src = String(r?.photo ?? '').trim();
+  if (!hasPhoto(r)) return '';
+  const name = String((r?.visitors ?? []).find(v => String(v?.name ?? '').trim())?.name ?? '').trim();
+  return `<figure class="passphoto">
+            <img src="${esc(src)}" alt="${esc(name ? `Photograph of ${name}` : 'Visitor photograph')}" />
+            <figcaption>${esc(name || 'Visitor')}</figcaption>
+          </figure>`;
 };
 
+/** The same shape `guards.photo` admits: a base64 PNG, JPEG or WebP and nothing else. */
+const PRINTABLE_PHOTO = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/** Only the rows actually entered are printed; an empty section says Nil. */
+const rowsOrNil = (items, head, row) => items.length
+  ? `<table><thead><tr>${head}</tr></thead><tbody>${items.map(row).join('')}</tbody></table>`
+  : ' Nil';
+
 function sheet(r) {
-  const visitors = padTo(r.visitors, Math.min(CFG.maxVisitors, 10));
-  const vehicles = padTo(r.vehicles, 1);
-  const escorts = padTo(r.escorts, 1);
+  const visitors = (r.visitors ?? []).filter(v => String(v?.name ?? '').trim());
+  const vehicles = filled(r.vehicles);
+  const escorts = filled(r.escorts);
 
   return `
   <div class="sheet">
     <div class="meta">${esc(String(r.status ?? '').toUpperCase())}${r.pass_no ? ' · Pass No ' + esc(r.pass_no) : ''}</div>
-    <h1>${esc(CFG.formTitle)}</h1>
-    <h2>${esc(CFG.unitName)}</h2>
+    <div class="intro${hasPhoto(r) ? ' has-photo' : ''}">
+      ${passPhoto(r)}
+      <div class="intro-body">
+        <h1>${esc(CFG.formTitle)}</h1>
+        <h2>${esc(CFG.unitName)}</h2>
 
-    <div><span class="sec-title">Departments/ Squadron</span> ${fill(r.department, 260)}</div>
+        <div class="dept"><span class="sec-title">Departments/ Squadron/ Unit</span> ${fill(r.department, 260)}</div>
 
-    <ol class="main">
-      <li>
-        The under mentioned personnel are required to visit this department/ Sqdn.<br/>
-        Date of Visit ${fill(r.visit_date, 120)}
-        &nbsp; Time of visit from ${fill(r.time_from, 70)}
-        To ${fill(r.time_to, 70)} Hrs<br/>
-        Purpose ${fill(r.purpose, 420)}<br/>
-        Place of visit ${fill(r.place_of_visit, 400)}
-      </li>
+        <ol class="main">
+          <li>
+            Date of Visit ${fill(r.visit_date, 120)}
+            &nbsp; Time of visit from ${fill(r.time_from, 70)}
+            To ${fill(r.time_to, 70)} Hrs<br/>
+            Purpose ${fill(r.purpose, 420)}<br/>
+            Place of visit ${fill(r.place_of_visit, 400)}
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <ol class="main" start="2">
 
       <li>
         <span class="sec-title">Details of Visitors: -</span>
-        <table>
-          <thead><tr>
+        ${rowsOrNil(visitors, `
             <th class="ser">Ser</th><th>Name</th><th>Sex/Age</th><th>Nationality</th>
-            <th>ID Proof No. &amp; details</th><th>Full address of firm/ company/ visitors</th>
-          </tr></thead>
-          <tbody>
-            ${visitors.map((v, i) => `<tr>
+            <th>ID Proof No. &amp; details</th><th>Full address of firm/ company/ visitors</th>`, (v, i) => `<tr>
               <td class="ser">${i + 1}.</td>
               <td>${esc(v?.name ?? '')}</td>
               <td>${esc([v?.sex, v?.age].filter(Boolean).join('/'))}</td>
               <td>${esc(v?.nationality ?? '')}</td>
               <td>${esc([v?.id_proof_type, v?.id_proof_no].filter(Boolean).join(' – '))}</td>
               <td>${esc(v?.address ?? '')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+            </tr>`)}
       </li>
 
       <li>
         <span class="sec-title">Details of Vehicle (if any): -</span>
-        <table>
-          <thead><tr>
+        ${rowsOrNil(vehicles, `
             <th>Regn No.</th><th>Type of Vehicle</th><th>Driver Name</th>
-            <th>CDL No.</th><th>Purpose to bring inside</th>
-          </tr></thead>
-          <tbody>
-            ${vehicles.map(v => `<tr>
+            <th>CDL No.</th><th>Purpose to bring inside</th>`, v => `<tr>
               <td>${esc(v?.regn_no ?? '')}</td><td>${esc(v?.vehicle_type ?? '')}</td>
               <td>${esc(v?.driver_name ?? '')}</td><td>${esc(v?.cdl_no ?? '')}</td>
               <td>${esc(v?.purpose ?? '')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+            </tr>`)}
       </li>
 
       <li>
         <span class="sec-title">Details of Escort: -</span>
-        <table>
-          <thead><tr>
+        ${rowsOrNil(escorts, `
             <th>Name</th><th>Rank/Desig</th><th>P. No</th><th>I Card No.</th>
-            <th>Dept</th><th>Mob No.</th><th>Sign</th>
-          </tr></thead>
-          <tbody>
-            ${escorts.map(e => `<tr>
+            <th>Dept</th><th>Mob No.</th><th>Sign</th>`, e => `<tr>
               <td>${esc(e?.name ?? '')}</td><td>${esc(e?.rank_desig ?? '')}</td>
               <td>${esc(e?.p_no ?? '')}</td><td>${esc(e?.i_card_no ?? '')}</td>
               <td>${esc(e?.dept ?? '')}</td><td>${esc(e?.mob_no ?? '')}</td>
               <td>${e?.signed ? '✓' : ''}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </li>
-
-      <li>
-        It is requested that casual visitors pass may be issued to the above-mentioned visitors.
-        <div class="sig">
-          <div>
-            <p>File No. ${fill(r.file_no, 130)}</p>
-            <p>Date ${fill(r.requisition_date, 130)}</p>
-          </div>
-          <div>
-            <p>Signature. ${fill('', 150)}</p>
-            <p>Rank &amp; Name ${fill(r.requested_by_rank_name, 150)}</p>
-          </div>
-        </div>
+            </tr>`)}
       </li>
     </ol>
-
-    <div class="fwd">
-      <p style="margin:0 0 4px"><b>Forwarded to:-</b></p>
-      <p style="margin:0">${esc(CFG.securityOfficeLabel)}</p>
-      <p style="margin:10px 0 0">
-        Remarks of Security Officer/ OOD: ${fill(r.security_remarks, 230)}
-        Signature ${fill(r.security_signature, 140)}
-      </p>
-    </div>
 
     <div class="office">
       <h3>For use of Security Office</h3>
@@ -223,6 +269,7 @@ function sheet(r) {
 function summary(reqs) {
   const head = ['Pass No', 'File No', 'Date', 'From–To', 'Department', 'Purpose',
                 'Place', 'Visitors', 'Vehicles', 'Status'];
+  /* A table of many records, so no one photograph belongs on it. */
   return `
   <div class="sheet">
     <h1>${esc(CFG.formTitle)} — Summary</h1>

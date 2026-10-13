@@ -507,3 +507,42 @@ table.mini.accounts td { vertical-align: middle; }
 .hint.warn-text { color: var(--warn); }
 .card p.body { font-size: 13.5px; line-height: 1.55; margin: 0 0 10px; color: var(--text); }
 .card p.body:last-child { margin-bottom: 0; }
+
+/* ── visitor photograph ──────────────────────────────────────── */
+/*
+ * A fixed portrait box everywhere the photo appears, so a row's height does
+ * not follow whatever shape the camera produced, and object-fit crops rather
+ * than stretching a face.
+ */
+.photo-field .lbl { display: block; font-size: 12px; font-weight: 600;
+  color: var(--muted); margin-bottom: 6px; }
+/* The photograph is the first thing on the form, on the left, as on the paper. */
+.photo-card { display: flex; }
+.photo-card .photo-field { flex: 0 0 auto; }
+.photo-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.photo-thumb { width: 84px; height: 106px; object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); display: block; }
+.photo-thumb.small { width: 40px; height: 50px; border-radius: 4px; }
+.photo-thumb.empty { display: grid; place-items: center; font-size: 11px;
+  color: var(--muted); border-style: dashed; }
+.photo-acts { display: flex; flex-direction: column; gap: 6px; }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+/* The file input is driven by the buttons beside it, never shown. */
+.hidden-file { display: none; }
+
+/* ── camera dialog ───────────────────────────────────────────── */
+.modal-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  display: grid; place-items: center; z-index: 60; padding: 16px; }
+.modal.cam { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 18px; width: min(460px, 100%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
+.modal.cam h2 { margin: 0 0 12px; font-size: 16px; }
+/* A fixed frame, so the dialog does not resize when the stream starts. */
+.cam-view { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; background: #000;
+  border-radius: 8px; display: block; }
+.modal.cam .hint { margin: 10px 0; }
+/* Shown only when more than one camera is attached — a list of one is noise. */
+.cam-pick { width: 100%; margin-top: 10px; padding: 7px 9px; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); }
+.modal.cam .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }

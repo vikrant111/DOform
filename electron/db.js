@@ -29,6 +29,16 @@ export async function init({engine = CFG.dbEngine, dataDir = CFG.dataDir} = {}) 
 const ADDED_COLUMNS = [
   ['users', 'service_no', "VARCHAR(64) NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ''"],
   ['requisitions', 'created_by_service', "VARCHAR(64) NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ''"],
+  /*
+   * The pass photograph. One per requisition, because that is what a pass
+   * carries — it briefly lived on the visitor, and `migrate` below moves any
+   * picture taken then across rather than leaving it on a column nothing reads.
+   *
+   * There is deliberately no entry for `visitors.photo`: a database that has
+   * that column already has it, and adding it to a new one would create a dead
+   * column for the sake of a version nobody is running.
+   */
+  ['requisitions', 'photo', 'MEDIUMTEXT', "TEXT NOT NULL DEFAULT ''"],
   ['requisitions', 'created_by_name', "VARCHAR(255) NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ''"],
 ];
 
@@ -42,6 +52,25 @@ async function migrate(d) {
   }
   // Only once the column is certain to exist.
   await d.ensureIndex('idx_req_service', 'requisitions', ['created_by_service']);
+
+  /*
+   * Carry a photograph taken while it lived on the visitor onto the
+   * requisition, once.
+   *
+   * Without this, upgrading loses a picture somebody took — it would still be
+   * in the database, on a column nothing reads any more, which is the worst of
+   * both. Only rows that have nothing of their own are touched, so this cannot
+   * overwrite a newer photograph however many times it runs.
+   */
+  if ((await d.columns('visitors')).includes('photo')) {
+    await d.run(
+      `UPDATE requisitions SET photo = COALESCE((
+         SELECT v.photo FROM visitors v
+          WHERE v.requisition_id = requisitions.id AND v.photo <> '' AND v.photo IS NOT NULL
+          ORDER BY v.ser LIMIT 1), '')
+       WHERE photo = '' OR photo IS NULL`,
+    );
+  }
 }
 
 /**
@@ -283,6 +312,7 @@ const REQ_FIELDS = [
   'file_no', 'requisition_date', 'requested_by_rank_name', 'security_remarks',
   'security_signature', 'pass_no', 'pass_issued_at', 'pass_issued_on',
   'pass_signed_by', 'status', 'created_by', 'created_by_service', 'created_by_name',
+  'photo',
 ];
 const DATE_FIELDS = new Set(['visit_date', 'requisition_date', 'pass_issued_on']);
 
@@ -347,6 +377,22 @@ export async function setStatus(ids, status) {
   return (await run(
     `UPDATE requisitions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${qs})`,
     [status, ...ids],
+  )).changes;
+}
+
+/**
+ * Write just the pass block onto one record.
+ *
+ * Narrow on purpose. `saveFull` deletes and rewrites every visitor, vehicle and
+ * escort row, which is far too much to do when the only thing being recorded is
+ * a pass number — and it would need the whole record in hand to do it safely.
+ */
+export async function setPass(id, {pass_no, pass_issued_at, pass_issued_on}) {
+  if (!id) return 0;
+  return (await run(
+    `UPDATE requisitions SET pass_no = ?, pass_issued_at = ?, pass_issued_on = ?,
+       updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [text(pass_no), text(pass_issued_at), date(pass_issued_on), id],
   )).changes;
 }
 

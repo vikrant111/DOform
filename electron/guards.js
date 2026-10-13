@@ -15,6 +15,16 @@ export const LIMITS = {
   password: 256,
   pageSize: 200,
   searchText: 120,
+  /**
+   * A visitor photo, as the length of its data URL.
+   *
+   * The page shrinks a picture to roughly 400px before sending it, which lands
+   * around 20–40 KB — so this is headroom rather than a target. It exists
+   * because a photo is the one field a page could hand over unbounded: ten
+   * visitors on one requisition, each with a full camera frame, is a database
+   * row measured in megabytes and a print that never renders.
+   */
+  photo: 192 * 1024,
 };
 
 export class BadInput extends Error {}
@@ -142,6 +152,40 @@ export function credentials(value) {
   };
 }
 
+/**
+ * Image types a photo may be. **SVG is deliberately absent**: it is a document,
+ * it can carry script, and this value is written straight into an `<img src>`
+ * on a page the app renders for printing.
+ */
+const PHOTO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const PHOTO_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
+
+/**
+ * A visitor photograph, as a base64 data URL — or empty, which is the norm.
+ *
+ * Checked rather than trusted, even though the page is our own code. The value
+ * ends up inside an `src` attribute in generated HTML, so anything that is not
+ * plainly an image is refused here: a `javascript:` or `file:` URL, an SVG, a
+ * remote address that would make the print reach the network, or base64 that
+ * is not base64. The ceiling is `LIMITS.photo`.
+ */
+export function photo(value, {field = 'Photo'} = {}) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value !== 'string') fail(`${field} must be an image.`);
+  const v = value.trim();
+  if (!v) return '';
+  if (v.length > LIMITS.photo)
+    fail(`${field} is too large — use a smaller picture (limit ${Math.round(LIMITS.photo / 1024)} KB).`);
+
+  const m = PHOTO_URL.exec(v);
+  if (!m) fail(`${field} must be a PNG, JPEG or WebP image.`);
+  if (!PHOTO_TYPES.includes(m[1])) fail(`${field} must be a PNG, JPEG or WebP image.`);
+  // Base64 encodes three bytes as four characters, so a length that is not a
+  // multiple of four is truncated data — an image that would render broken.
+  if (m[2].length % 4 !== 0) fail(`${field} did not arrive complete. Try again.`);
+  return v;
+}
+
 const visitor = (v, i) => {
   const o = isPlainObject(v) ? v : {};
   const label = `Visitor ${i + 1}`;
@@ -211,6 +255,11 @@ export function requisition(value, {maxVisitors, maxVehicles, maxEscorts, isAdmi
       ? 'draft'
       : oneOf(r.status, STATUSES, {field: 'Status'}),
     created_by: str(r.created_by, {field: 'Created by', max: 64}),
+    /*
+     * One photograph for the pass, whichever visitor it is of — not one per
+     * visitor. It is the requisition's, because that is what a pass is for.
+     */
+    photo: photo(r.photo, {field: 'Photograph'}),
     visitors: rows(r.visitors, visitor, {field: 'Visitors', max: maxVisitors}),
     vehicles: rows(r.vehicles, vehicle, {field: 'Vehicles', max: maxVehicles}),
     escorts: rows(r.escorts, escort, {field: 'Escorts', max: maxEscorts}),

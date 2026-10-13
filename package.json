@@ -11,6 +11,7 @@
     "dev": "electron . --dev",
     "init-db": "node electron/init-db.js",
     "test": "node --test \"tests/*.test.js\"",
+    "check:camera": "electron scripts/check-camera.cjs",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS requisitions (
   created_by             TEXT NOT NULL DEFAULT '',
   created_by_service     TEXT NOT NULL DEFAULT '',
   created_by_name        TEXT NOT NULL DEFAULT '',
+  photo                  TEXT NOT NULL DEFAULT '',
   created_at             TEXT NOT NULL,
   updated_at             TEXT NOT NULL
 );
