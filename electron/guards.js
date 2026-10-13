@@ -15,16 +15,6 @@ export const LIMITS = {
   password: 256,
   pageSize: 200,
   searchText: 120,
-  /**
-   * A visitor photo, as the length of its data URL.
-   *
-   * The page shrinks a picture to roughly 400px before sending it, which lands
-   * around 20–40 KB — so this is headroom rather than a target. It exists
-   * because a photo is the one field a page could hand over unbounded: ten
-   * visitors on one requisition, each with a full camera frame, is a database
-   * row measured in megabytes and a print that never renders.
-   */
-  photo: 192 * 1024,
 };
 
 export class BadInput extends Error {}
@@ -167,15 +157,14 @@ const PHOTO_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2}
  * ends up inside an `src` attribute in generated HTML, so anything that is not
  * plainly an image is refused here: a `javascript:` or `file:` URL, an SVG, a
  * remote address that would make the print reach the network, or base64 that
- * is not base64. The ceiling is `LIMITS.photo`.
+ * is not base64. There is no size limit: the page shrinks every picture to
+ * about 400px before sending it.
  */
 export function photo(value, {field = 'Photo'} = {}) {
   if (value === null || value === undefined || value === '') return '';
   if (typeof value !== 'string') fail(`${field} must be an image.`);
   const v = value.trim();
   if (!v) return '';
-  if (v.length > LIMITS.photo)
-    fail(`${field} is too large — use a smaller picture (limit ${Math.round(LIMITS.photo / 1024)} KB).`);
 
   const m = PHOTO_URL.exec(v);
   if (!m) fail(`${field} must be a PNG, JPEG or WebP image.`);

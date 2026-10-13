@@ -197,16 +197,10 @@ describe('requisition', () => {
     /* Truncated base64 would store as an image that only fails when printed. */
     throws(() => photo('data:image/png;base64,abc'), /did not arrive complete/);
 
-    /*
-     * The ceiling. Ten visitors each carrying a full camera frame is a row
-     * measured in megabytes; the page shrinks a picture before sending it, and
-     * this is what happens when something does not.
-     */
-    throws(() => photo('data:image/jpeg;base64,' + 'A'.repeat(G.LIMITS.photo)), /too large/);
     /* And a visitor cannot carry one any more, however the page asks. */
     assert.equal(G.requisition({...base, visitors: [{...base.visitors[0], photo: PNG}]}, opts).visitors[0].photo, undefined);
-    /* And one just inside it is kept, so the ceiling is a ceiling, not a ban. */
-    const big = 'data:image/jpeg;base64,' + 'A'.repeat(G.LIMITS.photo - 24);
+    /* No size limit: a large photo is kept as it is. */
+    const big = 'data:image/jpeg;base64,' + 'A'.repeat(4 * 1024 * 1024);
     assert.equal(photo(big), big);
   });
 

@@ -2,11 +2,15 @@
  * The visitor photograph: taken with the camera, or chosen from the machine.
  *
  * Everything here produces one thing — a small base64 JPEG data URL — so the
- * rest of the app never has to know which of the two it came from. The picture
- * is shrunk **in the page, before it is sent**: a phone camera frame is several
- * megabytes, and a requisition may carry ten of them. `guards.photo` enforces a
- * ceiling on the other side of the bridge; this is what keeps a normal picture
- * from ever reaching it.
+ * rest of the app never has to know where it came from or what format it was.
+ * Any file size and any image format is accepted: the picture is shrunk to
+ * `MAX_EDGE` **in the page, before it is sent**, so a 20 MB phone photo is
+ * stored as roughly 30 KB.
+ *
+ * Formats the page decodes itself: JPEG, PNG, WebP, GIF, BMP, AVIF, ICO, SVG.
+ * Anything else (HEIC/HEIF, TIFF, JPEG 2000, PSD, RAW…) is converted to JPEG
+ * by the operating system's own tool in the main process — see
+ * `electron/convert-image.js`.
  *
  * No library. A canvas resizes and re-encodes, which is the platform doing the
  * work that an image library would otherwise be installed for.
@@ -19,29 +23,11 @@ export const MAX_EDGE = 400;
 export const QUALITY = 0.72;
 
 /**
- * The ceiling `guards.photo` enforces on the other side of the bridge.
- *
- * Repeated here rather than imported: this file runs in the page, which has no
- * access to the Electron modules. `pnpm test` asserts the two numbers are the
- * same, so they cannot drift apart — and the guard stays the authority.
+ * Every image type. The extensions are listed too because Windows and some
+ * Linux desktops report no MIME type for HEIC, TIFF or RAW files, and the
+ * picker would otherwise hide them.
  */
-export const MAX_BYTES = 192 * 1024;
-
-/**
- * Sizes and qualities to try, in order, until one fits.
- *
- * A face at 400px and q0.72 lands around 30 KB, so the first attempt is almost
- * always the one that is kept. The rest exist because "almost always" is not a
- * guarantee: a noisy or highly detailed frame compresses far worse, and a photo
- * refused by the guard *after* somebody has taken it is the worst way to find
- * that out.
- */
-const ATTEMPTS = [
-  [MAX_EDGE, QUALITY], [MAX_EDGE, 0.6], [MAX_EDGE, 0.45],
-  [320, 0.6], [320, 0.45], [240, 0.5], [200, 0.4],
-];
-/** Refused before anything is decoded — a video or a RAW file is not a photo. */
-export const ACCEPT = 'image/png,image/jpeg,image/webp,image/heic,image/heif';
+export const ACCEPT = 'image/*,.heic,.heif,.tif,.tiff,.jp2,.j2k,.jxl,.psd,.dng,.cr2,.cr3,.nef,.arw,.orf,.rw2,.raf';
 
 /** Pixel size that fits inside `MAX_EDGE` without changing the shape of a face. */
 export function fitted(width, height, max = MAX_EDGE) {
@@ -70,45 +56,53 @@ function render(source, {width, height}, quality) {
   return canvas.toDataURL('image/jpeg', quality);
 }
 
-/**
- * Draw the picture smaller and smaller until it fits under `MAX_BYTES`.
- *
- * The first attempt is what nearly every photograph gets. Stepping down only
- * matters for a frame that compresses badly, and it is the difference between
- * a slightly softer picture and the guard rejecting one somebody just took.
- */
-function encode(source, width, height) {
-  let last = '';
-  for (const [edge, quality] of ATTEMPTS) {
-    last = render(source, fitted(width, height, edge), quality);
-    if (last.length <= MAX_BYTES) return last;
-  }
-  /* Nothing in the list fitted. Said plainly rather than sent to be refused. */
-  throw new Error('That picture could not be made small enough. Try taking it again, or choose another.');
-}
+/** Shrunk to `MAX_EDGE` and re-encoded as a JPEG. */
+const encode = (source, width, height) => render(source, fitted(width, height), QUALITY);
 
-/** A chosen file, decoded, shrunk, and returned as a data URL. */
+/** Loads a data URL into an <img>. Data URLs, not blob URLs: the page's CSP allows only those. */
+const imageFrom = src => new Promise((resolve, reject) => {
+  const el = new Image();
+  el.onload = () => (el.naturalWidth ? resolve(el) : reject(new Error('empty image')));
+  el.onerror = () => reject(new Error('undecodable'));
+  el.src = src;
+});
+
+const readAsDataUrl = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(file);
+});
+
+/**
+ * A chosen file of any size and format, decoded, shrunk, and returned as a
+ * JPEG data URL. Tried in order, cheapest first:
+ *   1. createImageBitmap — every raster format Chromium knows, EXIF rotation applied
+ *   2. an <img> — adds SVG
+ *   3. the operating system's converter, in the main process — HEIC, TIFF, RAW…
+ */
 export async function fromFile(file) {
   if (!file) return '';
-  if (!/^image\//i.test(file.type || '')) throw new Error('That file is not an image.');
 
-  const url = URL.createObjectURL(file);
   try {
-    const img = await new Promise((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      /*
-       * A file the browser cannot decode — a HEIC on a platform without the
-       * codec is the one that actually happens — fails here rather than being
-       * stored as a broken image nobody notices until the pass is printed.
-       */
-      el.onerror = () => reject(new Error('That image could not be read. Try a JPEG or PNG.'));
-      el.src = url;
-    });
+    const bmp = await createImageBitmap(file);
+    try {
+      return encode(bmp, bmp.width, bmp.height);
+    } finally {
+      bmp.close();
+    }
+  } catch { /* not a format Chromium decodes as a bitmap */ }
+
+  try {
+    const img = await imageFrom(await readAsDataUrl(file));
     return encode(img, img.naturalWidth, img.naturalHeight);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  } catch { /* nor as an <img> */ }
+
+  const ext = (/\.([a-z0-9]{1,8})$/i.exec(file.name ?? '')?.[1] ?? 'img').toLowerCase();
+  const res = await window.api.photo.convert(new Uint8Array(await file.arrayBuffer()), ext);
+  if (!res?.ok) throw new Error(res?.error || 'That image could not be read. Try a JPEG or PNG.');
+  const img = await imageFrom(res.data);
+  return encode(img, img.naturalWidth, img.naturalHeight);
 }
 
 /**

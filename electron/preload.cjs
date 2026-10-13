@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld('api', {
   exportPdf: (ids, mode) => invoke('export:pdf', ids, mode),
   print: (ids, mode) => invoke('print:run', ids, mode),
   openEnv: () => invoke('shell:openEnv'),
+  photo: {
+    convert: (bytes, ext) => invoke('photo:convert', bytes, ext),
+  },
 
   onMenuNew: fn => onMenu('menu:new', fn),
   onMenuPrint: fn => onMenu('menu:print', fn),

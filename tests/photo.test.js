@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, {describe} from 'node:test';
-import {ACCEPT, MAX_BYTES, MAX_EDGE, QUALITY, cameraOptions, constraintsFor,
+import {ACCEPT, MAX_EDGE, QUALITY, cameraOptions, constraintsFor,
         fitted, permissionHelp, preferredCamera} from '../renderer/photo.js';
 import {LIMITS, photo as guardPhoto} from '../electron/guards.js';
 import {blankRequisition, blankVisitor} from '../renderer/validate.js';
@@ -10,7 +10,7 @@ import {blankRequisition, blankVisitor} from '../renderer/validate.js';
  *
  * Only the pure half is exercised here: the canvas, the camera and the file
  * reader are the browser's, and testing them would be testing Chromium. What is
- * ours — and what decides whether a photograph fits inside `LIMITS.photo` — is
+ * ours — and what decides how large a stored photograph is — is
  * the number the canvas is given.
  */
 describe('visitor photograph', () => {
@@ -40,24 +40,16 @@ describe('visitor photograph', () => {
     assert.equal(fitted(1, 10000).width >= 1, true);
   });
 
-  /*
-   * The page and the guard hold the same ceiling, and the page cannot import
-   * the guard — it runs in the browser, where the Electron modules do not
-   * exist. So the two numbers are pinned together here instead. Drift would
-   * mean a photograph the page thought was fine and the guard refused, after
-   * somebody had already taken it.
-   */
-  test('the page and the guard agree on the ceiling', () => {
-    assert.equal(MAX_BYTES, LIMITS.photo);
+  test('there is no size limit, only a print resolution', () => {
+    assert.equal(LIMITS.photo, undefined);
     assert.ok(QUALITY > 0 && QUALITY <= 1);
     assert.ok(MAX_EDGE >= 200, 'a pass photograph still has to be a recognisable face');
   });
 
-  test('only still-image types are offered in the file picker', () => {
-    for (const type of ['image/png', 'image/jpeg', 'image/webp']) assert.ok(ACCEPT.includes(type));
-    /* SVG is a document that can carry script, and the guard refuses it — so
-       the picker must not offer it and produce a file that is then rejected. */
-    assert.ok(!ACCEPT.includes('svg'));
+  test('every image format is offered in the file picker', () => {
+    assert.ok(ACCEPT.startsWith('image/*'));
+    /* Listed by extension too: Windows gives these files no MIME type. */
+    for (const ext of ['.heic', '.heif', '.tiff', '.dng']) assert.ok(ACCEPT.includes(ext));
     assert.ok(!ACCEPT.includes('video/'));
   });
 

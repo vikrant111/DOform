@@ -8,6 +8,7 @@ import * as auth from './auth.js';
 import * as db from './db.js';
 import {isIssuedPass, issuePass, passOnPrint, toCsv, toHtml} from './export.js';
 import * as G from './guards.js';
+import {toJpeg} from './convert-image.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEV = process.argv.includes('--dev');
@@ -372,6 +373,18 @@ handle('export:pdf', async (ids, mode) => {
 handle('print:run', async (ids, mode) => {
   const m = G.oneOf(mode ?? 'form', G.MODES, {field: 'Mode'});
   return printDialog(toHtml(await selected(ids, 'print'), m));
+});
+
+/** An image format the page cannot decode, converted by the OS. Returns a JPEG data URL. */
+handle('photo:convert', async (bytes, ext) => {
+  requireUser();
+  if (!(bytes instanceof Uint8Array) || !bytes.length) throw new G.BadInput('That file is not an image.');
+  const safeExt = /^[a-z0-9]{1,8}$/i.test(String(ext)) ? String(ext) : 'img';
+  try {
+    return 'data:image/jpeg;base64,' + (await toJpeg(bytes, safeExt)).toString('base64');
+  } catch (err) {
+    throw new G.BadInput(err.message);
+  }
 });
 
 handle('shell:openEnv', async () => {
